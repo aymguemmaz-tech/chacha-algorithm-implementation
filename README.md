@@ -55,3 +55,15 @@ ChaCha20 applies 10 double rounds (= 20 total quarter-round passes).
 
 Constants
 ChaCha20 has no secret tables. The only constants are the four 32-bit words that fill row 0 of the state matrix (the "nothing-up-my-sleeve" magic string). The come from the ASCII string expand 32-byte k decoded as four little-endian 32-bit words.
+
+2. Implementation
+Part A - State Initialization: chacha20_init_state and serialize_state
+Before any mixing can take place, the 16-word state matrix must be constructed from the inputs:
+
+  state[0..3]   = MAGIC_CONSTANTS         (4 words, fixed, see "Constants" in overview section)
+  state[4..11]  = key                     (8 words, little-endian u32)
+  state[12]     = counter                 (1 word,  32-bit integer)
+  state[13..15] = nonce                   (3 words, little-endian u32)
+chacha20_init_state packs the raw bytes inputs into a flat Python list of 16 integers.
+
+serialize_state does the inverse after mixing: it converts each word back to 4 bytes (little-endian) and concatenates all 16 words into a 64-byte keystream block.

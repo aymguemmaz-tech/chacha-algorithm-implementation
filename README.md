@@ -67,3 +67,43 @@ Before any mixing can take place, the 16-word state matrix must be constructed f
 chacha20_init_state packs the raw bytes inputs into a flat Python list of 16 integers.
 
 serialize_state does the inverse after mixing: it converts each word back to 4 bytes (little-endian) and concatenates all 16 words into a 64-byte keystream block.
+Part B - Core ARX Primitives: rotate_left_32 and quarter_round
+This is the lowest-level building block of ChaCha20. Every operation in the cipher reduces to two primitives:
+
+rotate_left_32(value, n) is the circular left-shift of a 32-bit word by n positions. Unlike DES (which has variable-width rotations), ChaCha20 always operates on 32-bit words.
+quarter_round(a, b, c, d) takes four 32-bit words and returns four new ones after the four ARX steps shown in the overview. Returns a tuple (a, b, c, d).
+Hint for rotate_left_32: A 32-bit left rotation by n can be written as ((value << n) | (value >> (32 - n))) & 0xffffffff The mask & 0xffffffff is essential because Python integers have arbitrary precision.
+
+Hint for quarter_round: Additions are mod 2^32, apply & 0xffffffff after every +. Use ^^ (SageMath) for XOR. Use rotate_left_32 for the rotation steps.Part C - Block Function: double_round and chacha20_block
+This is the cryptographic core of ChaCha20. The block function takes the initial state, applies 20 rounds of mixing, and produces a 64-byte keystream block.
+
+double_round(state) applies one column round followed by one diagonal round to the mutable state list (modify in place and return). The column and diagonal indices are fixed:
+
+Step	Quarter round call
+Column 0	QR(state[0],  state[4],  state[8],  state[12])
+Column 1	QR(state[1],  state[5],  state[9],  state[13])
+Column 2	QR(state[2],  state[6],  state[10], state[14])
+Column 3	QR(state[3],  state[7],  state[11], state[15])
+Diagonal 0	QR(state[0],  state[5],  state[10], state[15])
+Diagonal 1	QR(state[1],  state[6],  state[11], state[12])
+Diagonal 2	QR(state[2],  state[7],  state[8],  state[13])
+Diagonal 3	QR(state[3],  state[4],  state[9],  state[14])
+chacha20_block then:
+
+Calls chacha20_init_state to get the initial state.
+Makes a working copy of the state.
+Calls double_round 10 times on the working copy (= 20 rounds total).
+Adds the initial state word-by-word to the working copy (mod 2^32). This final addition prevents the mixing from being reversible.
+Returns serialize_state(working_copy).
+Part D - Stream Cipher: chacha20_encrypt and chacha20_decrypt
+With the block function in place, building the stream cipher is straightforward:
+
+Slice the plaintext into 64-byte chunks.
+For each chunk at index i, call chacha20_block(key, nonce, counter + i) to produce a 64-byte keystream block.
+XOR the chunk with the keystream, byte by byte.
+The last chunk may be shorter than 64 bytes, only use as many keystream bytes as needed (do not pad the plaintext).
+Because XOR is its own inverse, encryption and decryption are the same operation. chacha20_decrypt simply calls chacha20_encrypt.
+
+Important: the counter parameter is the starting counter value for the first block. Subsequent blocks use counter + 1, counter + 2, etc. RFC 8439 examples typically use counter = 1 for data encryption.
+
+Hint: You can take advantage of zip(chunk, keystream_block)), that will produce (int, int) tuples, for XOR'ing the keystream with the plaintext (or ciphertext).
